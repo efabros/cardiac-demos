@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Heart Conduction & Cardiac Cycle Animation (Scrubbable)</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --panel:#121a30;
+    --ink:#eaf2ff;
+    --muted:#93a4c3;
+    --accent:#6ea8ff;
+    --atrial:#4fd1c5;
+    --vent:#ff7a7a;
+    --purk:#ffd166;
+    --grid-gap:14px;
+    --radius:18px;
+    --shadow: 0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  html,body{height:100%; background:linear-gradient(180deg, #091228 0%, #0b1020 100%); color:var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;}
+  .wrap{max-width:1200px; margin:24px auto; padding:0 14px; display:grid; grid-template-columns: 1.1fr 1fr; grid-template-rows:auto auto; gap:var(--grid-gap);}
+  .card{background:var(--panel); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow); position:relative; overflow:hidden;}
+  h1{font-size:18px; letter-spacing:.3px; margin:0 0 6px 0; color:#e7efff;}
+  .sub{font-size:12px; color:var(--muted); margin-bottom:8px}
+  .flex{display:flex; align-items:center; gap:10px}
+  button, select{background:#0f162b; color:var(--ink); border:1px solid #223055; border-radius:12px; padding:8px 10px; font-size:13px; cursor:pointer}
+  button:hover{border-color:#34508b}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; background:#0b1328; border:1px solid #223055; padding:2px 6px; border-radius:6px; color:#c9d7ff}
+  .row-span-2{grid-row: span 2;}
+  .controls{position:absolute; top:12px; right:12px; display:flex; gap:8px; align-items:center}
+  .legend{display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:#d7e6ff}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .dot{width:10px; height:10px; border-radius:50%}
+  .dot.atrial{background:var(--atrial)}
+  .dot.vent{background:var(--vent)}
+  .dot.node{background:var(--purk)}
+  .notice{font-size:12px; color:#9fb3da}
+  svg text{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#dce8ff}
+  .hint{font-size:12px; color:#a8bbdf; margin-top:6px}
+  a.btn{color:#eaf2ff; text-decoration:none; background:#0f162b; border:1px solid #223055; border-radius:12px; padding:8px 10px; font-size:13px;}
+  .phase-tag{position:absolute; left:14px; top:12px; font-size:12px; background:#0f162b; border:1px solid #223055; padding:4px 8px; border-radius:10px; color:#d7e6ff}
+  .scrub-hint{position:absolute; right:14px; bottom:10px; font-size:11px; color:#9fb3da}
+  .grab{cursor:grab}
+  .grabbing{cursor:grabbing}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card row-span-2" id="heartCard">
+      <div class="phase-tag" id="phaseTag">Paused · Phase 4 (Diastole)</div>
+      <div class="controls">
+        <button id="playBtn" title="Space">▶︎ Play</button>
+        <select id="speedSel" title="Speed">
+          <option value="0.75">0.75× (slow)</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2× (fast)</option>
+        </select>
+      </div>
+      <h1>Cardiac Conduction & Cycle — Synchronized</h1>
+      <div class="sub">SA → atria → (AV delay) → His–Purkinje → ventricles · Ventricular AP (phases 0–4) · Scrub the timeline to demo phases</div>
+      <div class="legend" style="margin-bottom:10px">
+        <span><span class="dot node"></span>Nodes/Path</span>
+        <span><span class="dot atrial"></span>Atrial depolarization</span>
+        <span><span class="dot vent"></span>Ventricular depolarization</span>
+      </div>
+      <svg id="heartSvg" viewBox="0 0 520 540" width="100%" height="auto" aria-label="Heart conduction diagram">
+        <!-- Background heart silhouette (stylized) -->
+        <defs>
+          <filter id="glowA" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowV" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="8" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <path d="M180,60
+                 C135,40,90,70,80,120
+                 C60,210,120,250,140,300
+                 C160,350,150,420,210,460
+                 C260,490,320,480,360,450
+                 C420,410,440,360,430,300
+                 C420,230,370,200,350,160
+                 C330,120,300,100,270,90
+                 C240,80,210,80,180,60Z"
+              fill="#1a2647" stroke="#2c3d6b" stroke-width="2"/>
+        <!-- Chambers (abstract) -->
+        <path id="atriaFill" d="M150,120 C130,170,170,220,210,230 C250,240,300,200,310,160 C320,125,280,100,240,95 C190,90,165,100,150,120Z" fill="#1f2e57"/>
+        <path id="ventFill" d="M180,260 C160,320,180,380,230,420 C270,450,330,440,370,400 C410,360,390,300,350,270 C310,240,220,230,180,260Z" fill="#1b2a4d"/>
+        <!-- Conduction system scaffold -->
+        <!-- SA node -->
+        <circle id="saNode" cx="215" cy="115" r="8" fill="#ffd166" stroke="#806b1a" stroke-width="1.5"/>
+        <text x="228" y="112" font-size="12">SA node</text>
+        <!-- AV node -->
+        <circle id="avNode" cx="260" cy="225" r="7" fill="#ffd166" stroke="#806b1a" stroke-width="1.3"/>
+        <text x="270" y="230" font-size="12">AV node</text>
+        <!-- His bundle and branches -->
+        <path id="his" d="M260,225 L270,250 L280,275" stroke="#ffd166" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path id="rbb" d="M280,275 L310,300 L340,320" stroke="#ffd166" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path id="lbb" d="M280,275 L260,295 L240,315 L230,340" stroke="#ffd166" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <!-- Purkinje (simplified) -->
+        <path id="purkR" d="M340,320 L360,340 L370,365" stroke="#ffd166" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path id="purkL" d="M230,340 L210,360 L200,385" stroke="#ffd166" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <!-- Atrial pathways -->
+        <path id="atrialPath1" d="M215,115 C190,125 175,150 180,185" stroke="#4fd1c5" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.25"/>
+        <path id="atrialPath2" d="M215,115 C240,130 260,160 260,190" stroke="#4fd1c5" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.25"/>
+        <!-- Ventricular spread (overlay paths for glow) -->
+        <path id="ventPath1" d="M280,275 C300,300 320,320 350,340" stroke="#ff7a7a" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.2"/>
+        <path id="ventPath2" d="M280,275 C260,295 240,315 220,345" stroke="#ff7a7a" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.2"/>
+      </svg>
+    </div>
+
+    <div class="card" id="apCard">
+      <h1>Ventricular Action Potential (Phases 0–4)</h1>
+      <div class="sub">Marker runs in sync with conduction & cardiac cycle</div>
+      <svg id="apSvg" viewBox="0 0 560 320" width="100%" height="auto" aria-label="Ventricular action potential">
+        <!-- Axes -->
+        <line x1="40" y1="270" x2="520" y2="270" stroke="#365187" stroke-width="1"/>
+        <line x1="40" y1="40" x2="40" y2="270" stroke="#365187" stroke-width="1"/>
+        <text x="10" y="50" font-size="12">+20</text>
+        <text x="12" y="170" font-size="12">0</text>
+        <text x="14" y="262" font-size="12">-90 mV</text>
+        <text x="450" y="295" font-size="12">time</text>
+        <!-- AP path (approximate) -->
+        <path id="apPath" d="M 40 260 
+                              C 80 250, 110 220, 150 120 
+                              C 170 90, 210 90, 260 110 
+                              C 300 125, 320 150, 360 170
+                              C 390 185, 430 220, 480 260" 
+              fill="none" stroke="#e6f0ff" stroke-width="2.5"/>
+        <!-- Phase labels -->
+        <text x="95" y="100" font-size="12">Phase 0</text>
+        <text x="210" y="90" font-size="12">1</text>
+        <text x="260" y="105" font-size="12">2</text>
+        <text x="345" y="165" font-size="12">3</text>
+        <text x="460" y="252" font-size="12">4</text>
+        <circle id="apDot" cx="40" cy="260" r="6" fill="#ff7a7a" filter="url(#glowV)"/>
+      </svg>
+      <div class="hint">Tip: <span class="kbd">Space</span> to Play/Pause · Drag on the timeline below to scrub.</div>
+    </div>
+
+    <div class="card" id="timelineCard">
+      <h1>Cardiac Cycle Timeline</h1>
+      <div class="sub">Aligned to ECG landmarks: P (atrial systole) → PR (AV delay) → QRS (ventricular depol) → QT (repolarization) → Diastole</div>
+      <svg id="timeSvg" class="grab" viewBox="0 0 920 120" width="100%" height="auto" aria-label="Cardiac cycle timeline">
+        <!-- Segmented bar -->
+        <rect x="40" y="40" width="820" height="24" rx="12" fill="#0f1a34" stroke="#2b3d67"/>
+        <!-- segments (proportional to 1,000 ms baseline beat) -->
+        <g id="segments">
+          <!-- P wave ~80 ms -->
+          <rect id="segP" x="40" y="40" width="65.6" height="24" fill="#4fd1c5" opacity="0.8"/>
+          <!-- PR segment ~80 ms -->
+          <rect id="segPR" x="105.6" y="40" width="65.6" height="24" fill="#ffd166" opacity="0.7"/>
+          <!-- QRS ~90 ms -->
+          <rect id="segQRS" x="171.2" y="40" width="73.8" height="24" fill="#ff7a7a" opacity="0.85"/>
+          <!-- QT remainder to ~520 ms total -->
+          <rect id="segQT" x="245" y="40" width="229.0" height="24" fill="#e6f0ff" opacity="0.6"/>
+          <!-- Diastole remainder -->
+          <rect id="segDia" x="474" y="40" width="386" height="24" fill="#233966" opacity="0.6"/>
+        </g>
+        <!-- Moving cursor -->
+        <line id="cursor" x1="40" x2="40" y1="30" y2="78" stroke="#eaf2ff" stroke-width="2"/>
+        <!-- Labels -->
+        <text x="40" y="90" font-size="12">Atrial systole (P)</text>
+        <text x="140" y="90" font-size="12">AV delay (PR)</text>
+        <text x="220" y="90" font-size="12">Ventricular depol (QRS)</text>
+        <text x="350" y="90" font-size="12">Repolarization (QT)</text>
+        <text x="640" y="90" font-size="12">Diastole / filling</text>
+      </svg>
+      <div class="scrub-hint">Drag the timeline to scrub · Click a segment label to jump</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- Timing model (baseline 1000 ms per beat at 60 bpm) ----------
+  const BASE_BEAT_MS = 1000;
+  const windows = {
+    P:   [0, 80],     // atrial depolarization
+    PR:  [80, 160],   // AV nodal delay (PR segment portion)
+    QRS: [160, 250],  // ventricular depolarization
+    QT:  [160, 520],  // depol + repol window (QT interval)
+    DIA: [520, 1000], // remainder of diastole
+  };
+
+  // DOM
+  const playBtn = document.getElementById('playBtn');
+  const speedSel = document.getElementById('speedSel');
+  const phaseTag = document.getElementById('phaseTag');
+  const heartSvg = document.getElementById('heartSvg');
+  const apPath = document.getElementById('apPath');
+  const apDot = document.getElementById('apDot');
+  const atriaFill = document.getElementById('atriaFill');
+  const ventFill = document.getElementById('ventFill');
+  const atrialPath1 = document.getElementById('atrialPath1');
+  const atrialPath2 = document.getElementById('atrialPath2');
+  const ventPath1 = document.getElementById('ventPath1');
+  const ventPath2 = document.getElementById('ventPath2');
+  const his = document.getElementById('his');
+  const rbb = document.getElementById('rbb');
+  const lbb = document.getElementById('lbb');
+  const purkR = document.getElementById('purkR');
+  const purkL = document.getElementById('purkL');
+  const avNode = document.getElementById('avNode');
+  const timeSvg = document.getElementById('timeSvg');
+  const cursor = document.getElementById('cursor');
+
+  // Utility helpers
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const between = (t, a, b) => t>=a && t<b;
+  const apLen = apPath.getTotalLength();
+
+  // Prepare stroke-dash to reveal conductions
+  function prepStrokeDash(path){
+    const len = path.getTotalLength();
+    path.setAttribute('stroke-dasharray', len);
+    path.setAttribute('stroke-dashoffset', len);
+    return len;
+  }
+  const lenA1 = prepStrokeDash(atrialPath1);
+  const lenA2 = prepStrokeDash(atrialPath2);
+  const lenH  = prepStrokeDash(his);
+  const lenR  = prepStrokeDash(rbb);
+  const lenL  = prepStrokeDash(lbb);
+  const lenVR = prepStrokeDash(ventPath1);
+  const lenVL = prepStrokeDash(ventPath2);
+  const lenPR = prepStrokeDash(purkR);
+  const lenPL = prepStrokeDash(purkL);
+
+  // Animation state
+  let playing = false;
+  let speed = 1.0;
+  let rafId = null;
+  let baseStart = performance.now();
+  let currentBeatT = 0; // ms within beat [0,1000]
+
+  function setPlaying(p){
+    playing = p;
+    playBtn.textContent = p ? '❚❚ Pause' : '▶︎ Play';
+    if (p){
+      baseStart = performance.now() - currentBeatT / speed;
+      rafId = requestAnimationFrame(tick);
+      phaseTag.textContent = 'Playing';
+    } else {
+      if (rafId) cancelAnimationFrame(rafId);
+      phaseTag.textContent = phaseString(currentBeatT, true);
+    }
+  }
+
+  function phaseString(t, paused=false){
+    let label = '';
+    if (between(t, windows.P[0], windows.P[1])) label = 'P wave · Atrial depol';
+    else if (between(t, windows.PR[0], windows.PR[1])) label = 'PR segment · AV delay';
+    else if (between(t, windows.QRS[0], windows.QRS[1])) label = 'QRS · Ventricular depol';
+    else if (between(t, windows.QT[0], windows.QT[1])) label = 'QT · Repolarization';
+    else label = 'Phase 4 · Diastole/filling';
+    return (paused ? 'Paused · ' : '') + label;
+  }
+
+  function render(beatT){
+    currentBeatT = clamp(beatT, 0, BASE_BEAT_MS);
+
+    // AP progression mapping
+    const apProgress = (currentBeatT <= windows.QT[1])
+      ? (currentBeatT - windows.QT[0]) / (windows.QT[1] - windows.QT[0]) * 0.75
+      : 0.75 + (currentBeatT - windows.QT[1]) / (windows.DIA[1] - windows.DIA[0]) * 0.25;
+    const apPoint = apPath.getPointAtLength(apLen * clamp(apProgress, 0, 1));
+    apDot.setAttribute('cx', apPoint.x);
+    apDot.setAttribute('cy', apPoint.y);
+
+    // Timeline cursor
+    const xStart = 40, xEnd = 860;
+    const x = lerp(xStart, xEnd, currentBeatT / BASE_BEAT_MS);
+    cursor.setAttribute('x1', x);
+    cursor.setAttribute('x2', x);
+
+    // Fills
+    atriaFill.setAttribute('fill', between(currentBeatT, windows.P[0], windows.P[1]) ? '#234a62' : '#1f2e57');
+    ventFill.setAttribute('fill', between(currentBeatT, windows.QRS[0], windows.QT[1]) ? '#472c39' : '#1b2a4d');
+
+    // Atrial stroke during P
+    const pFrac = clamp((currentBeatT - windows.P[0]) / (windows.P[1] - windows.P[0]), 0, 1);
+    const aDash = (1 - pFrac) * lenA1;
+    atrialPath1.setAttribute('stroke-dashoffset', aDash);
+    atrialPath2.setAttribute('stroke-dashoffset', aDash);
+    atrialPath1.setAttribute('opacity', pFrac>0? 0.85 : 0.25);
+    atrialPath2.setAttribute('opacity', pFrac>0? 0.85 : 0.25);
+
+    // AV node pulsing during PR
+    const avPulse = between(currentBeatT, windows.PR[0], windows.PR[1]);
+    avNode.setAttribute('filter', avPulse ? 'url(#glowA)' : '');
+
+    // His–Purkinje & ventricles during QRS
+    const qrsFrac = clamp((currentBeatT - windows.QRS[0]) / (windows.QRS[1] - windows.QRS[0]), 0, 1);
+    his.setAttribute('stroke-dashoffset', (1 - qrsFrac) * lenH);
+    rbb.setAttribute('stroke-dashoffset', (1 - qrsFrac) * lenR);
+    lbb.setAttribute('stroke-dashoffset', (1 - qrsFrac) * lenL);
+    purkR.setAttribute('stroke-dashoffset', (1 - qrsFrac) * lenPR);
+    purkL.setAttribute('stroke-dashoffset', (1 - qrsFrac) * lenPL);
+    ventPath1.setAttribute('stroke-dashoffset', (1 - qrsFrac) * lenVR);
+    ventPath2.setAttribute('stroke-dashoffset', (1 - qrsFrac) * lenVL);
+    const activeOpacity = qrsFrac>0? 0.9:0.2;
+    [his,rbb,lbb,purkR,purkL,ventPath1,ventPath2].forEach(p=>p.setAttribute('opacity', activeOpacity));
+
+    // Phase tag
+    if (!playing) phaseTag.textContent = phaseString(currentBeatT, true);
+  }
+
+  function tick(now){
+    const elapsed = (now - baseStart) * speed; // ms
+    const beatT = elapsed % BASE_BEAT_MS;
+    render(beatT);
+    if (playing) rafId = requestAnimationFrame(tick);
+  }
+
+  // Controls
+  playBtn.addEventListener('click', ()=> setPlaying(!playing));
+  document.addEventListener('keydown', (e)=>{
+    if (e.code === 'Space'){ e.preventDefault(); setPlaying(!playing); }
+  });
+  speedSel.addEventListener('change', ()=>{
+    const ratio = parseFloat(speedSel.value) / speed;
+    // keep current visual time continuous when changing speed
+    baseStart = performance.now() - (currentBeatT / parseFloat(speedSel.value));
+    speed = parseFloat(speedSel.value);
+  });
+
+  // Scrubbing on the timeline
+  let dragging = false;
+  function xToBeatT(clientX){
+    const rect = timeSvg.getBoundingClientRect();
+    const xStart = rect.left + (40/920)*rect.width;
+    const xEnd   = rect.left + (860/920)*rect.width;
+    const t = clamp((clientX - xStart) / (xEnd - xStart), 0, 1);
+    return t * BASE_BEAT_MS;
+  }
+  function startDrag(e){
+    dragging = true;
+    timeSvg.classList.add('grabbing');
+    setPlaying(false); // auto-pause on drag
+    render(xToBeatT(e.clientX || (e.touches && e.touches[0].clientX)));
+  }
+  function moveDrag(e){
+    if (!dragging) return;
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    render(xToBeatT(clientX));
+  }
+  function endDrag(){
+    dragging = false;
+    timeSvg.classList.remove('grabbing');
+  }
+  timeSvg.addEventListener('mousedown', startDrag);
+  timeSvg.addEventListener('mousemove', moveDrag);
+  document.addEventListener('mouseup', endDrag);
+  // Touch support
+  timeSvg.addEventListener('touchstart', startDrag, {passive:true});
+  timeSvg.addEventListener('touchmove', moveDrag,   {passive:true});
+  document.addEventListener('touchend', endDrag,    {passive:true});
+
+  // Quick jumps by clicking segments text
+  const jumpers = [
+    ['segP',  windows.P[0]],
+    ['segPR', windows.PR[0]],
+    ['segQRS',windows.QRS[0]],
+    ['segQT', windows.QT[0]],
+    ['segDia',windows.DIA[0]],
+  ];
+  jumpers.forEach(([id, t])=>{
+    const el = document.getElementById(id);
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', ()=>{ setPlaying(false); render(t+1); });
+  });
+
+  // Initial render (paused)
+  render(0);
+})();
+</script>
+</body>
+</html>
