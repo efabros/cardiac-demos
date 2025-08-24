@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aerobic vs Anaerobic — Exercise & Rest Comparison</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a30; --ink:#eaf2ff; --muted:#9fb3da;
+    --blue:#61a8ff; --green:#6ee7b7; --amber:#f8c77e; --red:#ff6e6e; --violet:#b39fff;
+  }
+  html,body{height:100%; margin:0; background:linear-gradient(180deg,#091228,#0b1020); color:var(--ink);
+            font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{max-width:1200px; margin:20px auto; padding:0 14px; display:grid; gap:14px}
+  .card{background:var(--panel); border:1px solid #223055; border-radius:16px; padding:14px; box-shadow:0 8px 24px rgba(0,0,0,.35); position:relative; overflow:hidden}
+  h1{font-size:18px; margin:0 0 6px}
+  .sub{font-size:12px; color:var(--muted); margin-bottom:8px}
+  .controls{position:static; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-start; margin:8px 0 10px}
+  button, select, input[type="range"]{background:#0f162b; color:var(--ink); border:1px solid #223055; border-radius:10px; padding:6px 10px; font-size:12px}
+  button{cursor:pointer} button:hover{border-color:#34508b}
+  .tag{position:absolute; left:12px; top:12px; font-size:12px; background:#0f162b; border:1px solid #223055; padding:4px 8px; border-radius:10px; color:#d7e6ff}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  .panelTitle{font-size:14px; fill:#ffffff; paint-order: stroke; stroke:#000000; stroke-width:3px}
+  .metrics{display:grid; grid-template-columns: repeat(2,1fr); gap:10px; margin-top:8px}
+  .box{background:#0f162b; border:1px solid #223055; border-radius:12px; padding:10px}
+  .box h3{margin:0 0 6px; font-size:13px; color:#d7e6ff}
+  .kv{display:grid; grid-template-columns:auto 1fr auto; gap:6px 10px; font-size:12px; color:#cfe0ff}
+  .kv span:nth-child(1){color:#93a4c3}
+  .em{font-weight:700; color:#ffffff}
+  .grab{cursor:grab} .grabbing{cursor:grabbing}
+  .presetBtns{display:flex; gap:6px; margin-left:6px}
+  .bar{height:12px; border-radius:8px; background:#11203f; border:1px solid #2b3d67; position:relative; overflow:hidden}
+  .fill{position:absolute; top:0; bottom:0; width:0%; background:linear-gradient(90deg, #6ee7b7, #61a8ff)}
+  .fill.red{background:linear-gradient(90deg, #ff9aa2, #ff6e6e)}
+  .legend{font-size:12px; color:#cfe0ff; margin-top:4px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="tag" id="phaseTag">Paused · Rest (Aerobic)</div>
+      <div class="controls">
+        <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#d7e6ff">
+          <label for="intensity">Intensity</label>
+          <input type="range" id="intensity" min="0" max="1" step="0.01" value="0.0" title="Work rate (0–1)">
+          <span id="intVal">0%</span>
+        </div>
+        <div class="presetBtns">
+          <button id="btnRest">Rest</button>
+          <button id="btnSubmax">Submax (Aerobic)</button>
+          <button id="btnThresh">Threshold</button>
+          <button id="btnHigh">High (Anaerobic)</button>
+        </div>
+        <select id="rate" title="Playback rate">
+          <option value="0.8">0.8×</option>
+          <option value="1.0" selected>1.0×</option>
+          <option value="1.2">1.2×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+        <button id="playBtn">▶︎ Play</button>
+      </div>
+      <h1>Aerobic vs Anaerobic — ATP, Energy, pH, O₂, CO₂ (Rest ↔ Exercise)</h1>
+      <div class="sub">Drag intensity or use presets to compare **ATP yield**, **energy**, **pH**, **O₂ consumption**, and **CO₂ production** across aerobic ↔ anaerobic states.</div>
+
+      <!-- Split Panels -->
+      <div class="grid2">
+        <!-- Aerobic panel -->
+        <svg id="aeroSvg" viewBox="0 0 560 240" width="100%" height="auto">
+          <rect x="0" y="0" width="560" height="26" fill="rgba(0,0,0,0.35)"/>
+          <text x="12" y="18" class="panelTitle">Aerobic metabolism (O₂ → ATP + CO₂ + H₂O)</text>
+          <!-- Lungs + heart icons -->
+          <g id="lungsA" transform="translate(40,60)">
+            <ellipse cx="30" cy="40" rx="30" ry="40" fill="#164a7a" stroke="#2b6cb0" stroke-width="2"/>
+            <ellipse cx="90" cy="40" rx="30" ry="40" fill="#164a7a" stroke="#2b6cb0" stroke-width="2"/>
+          </g>
+          <g id="heartA" transform="translate(200,80)">
+            <path d="M40 80 C10 55, -10 35, 15 15 C30 5, 40 20, 40 20 C40 20, 50 5, 65 15 C90 35, 70 55, 40 80 Z"
+                  fill="#ff8080" stroke="#5a2b2b" stroke-width="2"/>
+          </g>
+          <!-- Mitochondria -->
+          <g id="mitoA" transform="translate(360,80)">
+            <ellipse cx="40" cy="20" rx="36" ry="20" fill="#146c4a" stroke="#22a06b" stroke-width="2"/>
+            <text x="24" y="50" font-size="12" fill="#b7ffd6">ATP</text>
+          </g>
+          <!-- O2/CO2 bubbles -->
+          <g id="o2A"></g>
+          <g id="co2A"></g>
+        </svg>
+
+        <!-- Anaerobic panel -->
+        <svg id="anaSvg" viewBox="0 0 560 240" width="100%" height="auto">
+          <rect x="0" y="0" width="560" height="26" fill="rgba(0,0,0,0.35)"/>
+          <text x="12" y="18" class="panelTitle">Anaerobic metabolism (Glycolysis → ATP + Lactate + H⁺)</text>
+          <g id="lungsN" transform="translate(40,60)">
+            <ellipse cx="30" cy="40" rx="30" ry="40" fill="#2a2a4a" stroke="#4a4a8f" stroke-width="2"/>
+            <ellipse cx="90" cy="40" rx="30" ry="40" fill="#2a2a4a" stroke="#4a4a8f" stroke-width="2"/>
+          </g>
+          <g id="heartN" transform="translate(200,80)">
+            <path d="M40 80 C10 55, -10 35, 15 15 C30 5, 40 20, 40 20 C40 20, 50 5, 65 15 C90 35, 70 55, 40 80 Z"
+                  fill="#ff6a6a" stroke="#5a2b2b" stroke-width="2"/>
+          </g>
+          <!-- Glycolysis box -->
+          <g id="glyco" transform="translate(340,78)">
+            <rect x="0" y="0" width="140" height="74" rx="12" fill="#3a0f1a" stroke="#8f2b3d" stroke-width="2"/>
+            <text x="10" y="20" font-size="12" fill="#ffd6d6">Glycolysis</text>
+            <text x="10" y="40" font-size="12" fill="#ffd6d6">ATP (fast)</text>
+            <text x="10" y="60" font-size="12" fill="#ffaaaa">Lactate + H⁺</text>
+          </g>
+          <!-- Lactate droplets -->
+          <g id="lacN"></g>
+        </svg>
+      </div>
+
+      <!-- Metrics -->
+      <div class="metrics">
+        <div class="box">
+          <h3>Energy & ATP Yield</h3>
+          <div class="kv">
+            <span>ATP per glucose (aerobic)</span><span></span><span id="atp_aero" class="em">—</span>
+            <span>ATP per glucose (anaerobic)</span><span></span><span id="atp_ana" class="em">—</span>
+            <span>Instantaneous ATP demand</span><span class="bar"><span id="demandBar" class="fill"></span></span><span id="demand" class="em">—</span>
+            <span>Aerobic ATP supply</span><span class="bar"><span id="aeroBar" class="fill"></span></span><span id="aero_sup" class="em">—</span>
+            <span>Anaerobic ATP supply</span><span class="bar"><span id="anaBar" class="fill red"></span></span><span id="ana_sup" class="em">—</span>
+            <span>Total ATP supply (stacked)</span>
+            <span class="bar"><span id="stackAero" class="fill"></span><span id="stackAna" class="fill red" style="left:0"></span></span>
+            <span id="stack_readout" class="em">—</span>
+
+          </div>
+          <div class="legend">At low intensity, aerobic supply covers demand; at high intensity, anaerobic contribution fills the gap.</div>
+        </div>
+        <div class="box">
+          <h3>Gas Exchange & Acid–Base</h3>
+          <div class="kv">
+            <span>VO₂ (O₂ consumption)</span><span></span><span id="vo2" class="em">—</span>
+            <span>VCO₂ (CO₂ production)</span><span></span><span id="vco2" class="em">—</span>
+            <span>RER (VCO₂/VO₂)</span><span></span><span id="rer" class="em">—</span>
+            <span>pH</span><span></span><span id="ph" class="em">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="card">
+      <h1>Timeline (Rest → Submax → Threshold → High)</h1>
+      <svg id="timeSvg" class="grab" viewBox="0 0 1160 90" width="100%" height="auto">
+        <rect x="60" y="30" width="1000" height="20" rx="10" fill="#0f1a34" stroke="#2b3d67"/>
+        <rect x="60"  y="30" width="250" height="20" fill="#133055" opacity="0.85"/>
+        <rect x="310" y="30" width="300" height="20" fill="#1e4d86" opacity="0.85"/>
+        <rect x="610" y="30" width="150" height="20" fill="#7a5a16" opacity="0.9"/>
+        <rect x="760" y="30" width="300" height="20" fill="#5a1622" opacity="0.95"/>
+        <line id="tCursor" x1="60" x2="60" y1="25" y2="55" stroke="#eaf2ff" stroke-width="2"/>
+        <text x="70" y="70" font-size="12" fill="white">Rest</text>
+        <text x="380" y="70" font-size="12" fill="white">Submax</text>
+        <text x="640" y="70" font-size="12" fill="white">Threshold</text>
+        <text x="900" y="70" font-size="12" fill="white">High</text>
+      </svg>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const AT = 0.65; // anaerobic threshold
+  let u=0.0, playing=false, rate=1.0, baseStart=performance.now();
+
+  // DOM
+  const playBtn=document.getElementById('playBtn');
+  const rateSel=document.getElementById('rate');
+  const intensity=document.getElementById('intensity');
+  const intVal=document.getElementById('intVal');
+  const phaseTag=document.getElementById('phaseTag');
+  const tCursor=document.getElementById('tCursor');
+  const timeSvg=document.getElementById('timeSvg');
+  const btnRest=document.getElementById('btnRest');
+  const btnSub=document.getElementById('btnSubmax');
+  const btnThresh=document.getElementById('btnThresh');
+  const btnHigh=document.getElementById('btnHigh');
+
+  const ro={
+    atp_aero:document.getElementById('atp_aero'),
+    atp_ana:document.getElementById('atp_ana'),
+    demand:document.getElementById('demand'),
+    aero_sup:document.getElementById('aero_sup'),
+    ana_sup:document.getElementById('ana_sup'),
+    vo2:document.getElementById('vo2'),
+    vco2:document.getElementById('vco2'),
+    rer:document.getElementById('rer'),
+    ph:document.getElementById('ph')
+  };
+  const demandBar=document.getElementById('demandBar');
+  const aeroBar=document.getElementById('aeroBar');
+  const anaBar=document.getElementById('anaBar');
+  const stackAero=document.getElementById('stackAero');
+  const stackAna=document.getElementById('stackAna');
+  const stackRead=document.getElementById('stack_readout');
+
+  // Bubbles
+  const ns='http://www.w3.org/2000/svg';
+  const o2A=document.getElementById('o2A'), co2A=document.getElementById('co2A');
+  const lacN=document.getElementById('lacN');
+  function bubble(g,color){const c=document.createElementNS(ns,'circle');c.setAttribute('r',4);c.setAttribute('fill',color);c.setAttribute('opacity','0.85');g.appendChild(c);return c;}
+  const o2B=Array.from({length:14},()=>bubble(o2A,'#8ae3ff'));
+  const co2B=Array.from({length:12},()=>bubble(co2A,'#ffd27a'));
+  const lacB=Array.from({length:12},()=>bubble(lacN,'#ff9aa2'));
+
+  function physiology(u){
+    // Demand scale (arbitrary units)
+    const demand = 100 + 900*u; // 100 at rest → 1000 at max
+    // Aerobic supply saturates near VO2max
+    const aero = demand * (u<AT ? 1.0 : (1.0 - 0.6*((u-AT)/(1-AT)))); // falls short beyond AT
+    const aeroClamped = Math.max(0, Math.min(demand, aero));
+    const anaer = Math.max(0, demand - aeroClamped); // fills the gap
+    // ATP per glucose
+    const atpAerobic = 30; // simplified (~30-32)
+    const atpAnaer = 2;
+    // VO2 and VCO2 (L/min) — simple model
+    const VO2 = 0.25 + 3.0*Math.min(1, u/0.95);
+    const RER = u<AT ? 0.82 + 0.10*(u/AT) : 1.00 + 0.20*((u-AT)/(1-AT));
+    const VCO2 = VO2 * RER;
+    // pH drops post-AT
+    const pH = 7.40 - 0.20*Math.max(0, (u-AT)/(1-AT));
+    return {demand, aero:aeroClamped, anaer, atpAerobic, atpAnaer, VO2, VCO2, RER, pH};
+  }
+
+  function layoutParticles(t){
+    // oxygen left→right in aerobic panel
+    o2B.forEach((c,i)=>{
+      const phase=(i/o2B.length + t*0.0002*(0.4+u))%1;
+      const x= 240 + phase*200;
+      const y= 110 + Math.sin(i*0.6 + t*0.01)*4;
+      c.setAttribute('cx',x); c.setAttribute('cy',y);
+      c.setAttribute('opacity', 0.3 + 0.7*(1.0-u*0.4));
+    });
+    // CO2 right→left (aerobic)
+    co2B.forEach((c,i)=>{
+      const phase=(i/co2B.length + t*0.00018*(0.5+u))%1;
+      const x= 420 - phase*160;
+      const y= 130 + Math.cos(i*0.7 + t*0.011)*3;
+      c.setAttribute('cx',x); c.setAttribute('cy',y);
+      c.setAttribute('opacity', 0.25 + 0.75*(u*0.6));
+    });
+    // Lactate drops (anaerobic)
+    lacB.forEach((c,i)=>{
+      const frac=Math.max(0, (u-AT)/(1-AT));
+      const phase=(i/lacB.length + t*0.00022*(0.3+frac))%1;
+      const y= 150 - phase*70;
+      const x= 420 + Math.sin(i*0.8 + t*0.012)*14;
+      c.setAttribute('cx',x); c.setAttribute('cy',y);
+      c.setAttribute('opacity', 0.05 + 0.95*frac);
+    });
+  }
+
+  function render(now){
+    const phys=physiology(u);
+    // Readouts
+    ro.atp_aero.textContent = phys.atpAerobic + " ATP/glucose";
+    ro.atp_ana.textContent  = phys.atpAnaer  + " ATP/glucose";
+    ro.demand.textContent   = Math.round(phys.demand);
+    ro.aero_sup.textContent = Math.round(phys.aero);
+    ro.ana_sup.textContent  = Math.round(phys.anaer);
+    ro.vo2.textContent = phys.VO2.toFixed(2) + " L/min";
+    ro.vco2.textContent = phys.VCO2.toFixed(2) + " L/min";
+    ro.rer.textContent = phys.RER.toFixed(2);
+    ro.ph.textContent = phys.pH.toFixed(2);
+
+    // Bars (percent of max 1000)
+    const pct = x => Math.max(0, Math.min(100, (x/1000)*100));
+    demandBar.style.width = pct(phys.demand) + "%";
+    aeroBar.style.width   = pct(phys.aero) + "%";
+    anaBar.style.width    = pct(phys.anaer) + "%";
+    // Stacked total bar (additive)
+    const aeroPct = pct(phys.aero);
+    const anaPct  = pct(phys.anaer);
+    stackAero.style.left = '0%';
+    stackAero.style.width = aeroPct + '%';
+    stackAna.style.left = aeroPct + '%';
+    stackAna.style.width = anaPct + '%';
+    stackRead.textContent = Math.round(phys.aero + phys.anaer) + ' (aerobic ' + Math.round(phys.aero) + ' + anaerobic ' + Math.round(phys.anaer) + ')';
+
+    // Cursor & phase
+    const x=60+1000*u; tCursor.setAttribute('x1',x); tCursor.setAttribute('x2',x);
+    const label = u<0.15?'Rest (Aerobic)': u<AT ? 'Submax (Aerobic)' : u<0.85 ? 'Threshold region (mixed)' : 'High (Anaerobic)';
+    phaseTag.textContent = (playing?'Playing · ':'Paused · ') + label;
+
+    // Particles
+    layoutParticles(now);
+
+    if (playing) requestAnimationFrame(render);
+  }
+
+  function setU(val){u=Math.max(0,Math.min(1,val));intensity.value=u;intVal.textContent=Math.round(u*100)+'%';}
+  intensity.addEventListener('input',()=>{setU(parseFloat(intensity.value)); if(!playing) render(performance.now());});
+  btnRest.addEventListener('click',()=>{setU(0); render(performance.now());});
+  btnSub.addEventListener('click',()=>{setU(0.45); render(performance.now());});
+  btnThresh.addEventListener('click',()=>{setU(AT); render(performance.now());});
+  btnHigh.addEventListener('click',()=>{setU(1.0); render(performance.now());});
+
+  // Scrub
+  let dragging=false;
+  function xToU(clientX){const rect=timeSvg.getBoundingClientRect();const left=rect.left+(60/1160)*rect.width;const right=rect.left+(1060/1160)*rect.width;return Math.max(0,Math.min(1,(clientX-left)/(right-left)));}
+  function onDown(e){dragging=true;timeSvg.classList.add('grabbing');setPlaying(false);const x=e.touches?e.touches[0].clientX:e.clientX;setU(xToU(x));render(performance.now());}
+  function onMove(e){if(!dragging)return;const x=e.touches?e.touches[0].clientX:e.clientX;setU(xToU(x));}
+  function onUp(){dragging=false;timeSvg.classList.remove('grabbing');}
+  timeSvg.addEventListener('mousedown',onDown);document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+  timeSvg.addEventListener('touchstart',onDown,{passive:true});document.addEventListener('touchmove',onMove,{passive:true});document.addEventListener('touchend',onUp);
+
+  // Play loop
+  function tick(now){const elapsed=(now-baseStart)*rate;const cycle=20000;const phase=(elapsed%cycle)/cycle;const up=phase<0.5?phase/0.5:(1-(phase-0.5)/0.5);setU(up);render(now);if(playing) requestAnimationFrame(tick);}
+  function setPlaying(p){playing=p;playBtn.textContent=p?'❚❚ Pause':'▶︎ Play';if(p){baseStart=performance.now();requestAnimationFrame(tick);}}
+  playBtn.addEventListener('click',()=>setPlaying(!playing));
+  document.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();setPlaying(!playing);}});
+  rateSel.addEventListener('change',()=>{rate=parseFloat(rateSel.value);});
+
+  // Init
+  setU(0); render(performance.now());
+})();
+</script>
+</body>
+</html>
