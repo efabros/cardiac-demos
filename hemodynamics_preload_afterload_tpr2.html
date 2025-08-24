@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hemodynamics Demo + Live Readouts: Preload · Afterload · TPR · Wiggers</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a30; --ink:#eaf2ff; --muted:#93a4c3; --accent:#6ea8ff;
+    --red:#ff6e6e; --redDim:#e48c8c; --blue:#61a8ff; --blueDim:#90bef7; --gold:#ffd166; --green:#7bd389;
+  }
+  html,body{height:100%; margin:0; background:linear-gradient(180deg,#091228,#0b1020); color:var(--ink);
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;}
+  .wrap{max-width:1200px; margin:20px auto; padding:0 14px; display:grid; grid-template-rows:auto auto auto; gap:14px}
+  .card{background:var(--panel); border:1px solid #223055; border-radius:16px; padding:14px; box-shadow:0 8px 24px rgba(0,0,0,.35); position:relative; overflow:hidden}
+  h1{font-size:18px; margin:0 0 6px}
+  .sub{font-size:12px; color:var(--muted); margin-bottom:8px}
+  .controls{position:absolute; top:12px; right:12px; display:flex; gap:8px; align-items:center}
+  button, select, input[type="range"]{background:#0f162b; color:var(--ink); border:1px solid #223055; border-radius:12px; padding:8px 10px; font-size:13px}
+  button{cursor:pointer}
+  button:hover{border-color:#34508b}
+  .tag{position:absolute; left:12px; top:12px; font-size:12px; background:#0f162b; border:1px solid #223055; padding:4px 8px; border-radius:10px; color:#d7e6ff}
+  .legend{display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:#d7e6ff; margin-bottom:8px}
+  .lg{display:inline-flex; align-items:center; gap:6px}
+  .dot{width:10px; height:10px; border-radius:50%}
+  .r{background:var(--red)} .b{background:var(--blue)} .g{background:var(--green)} .y{background:var(--gold)}
+  .row2{display:grid; grid-template-columns: 1.05fr 1fr; gap:14px}
+  .slider{display:flex; align-items:center; gap:10px; font-size:12px; color:#c9d7ff}
+  .slider input{width:160px}
+  .hint{font-size:12px; color:#9fb3da}
+  svg text{fill:#dbe7ff}
+  .grab{cursor:grab} .grabbing{cursor:grabbing}
+  .metrics{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px}
+  .box{background:#0f162b; border:1px solid #223055; border-radius:12px; padding:10px}
+  .box h3{margin:0 0 6px; font-size:13px; color:#d7e6ff}
+  .kv{display:grid; grid-template-columns:auto 1fr auto; gap:6px 12px; font-size:12px; color:#cfe0ff}
+  .kv span:nth-child(1){color:#93a4c3}
+  .em{font-weight:600; color:#ffffff}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="tag" id="phaseTag">Paused · End-diastole (Preload)</div>
+      <div class="controls">
+        <div class="slider">
+          <label for="tpr">TPR</label>
+          <input type="range" id="tpr" min="0.5" max="1.6" step="0.05" value="1.0" title="Total Peripheral Resistance">
+          <span id="tprVal">1.00×</span>
+        </div>
+        <select id="rate" title="Rate">
+          <option value="0.8">0.8×</option>
+          <option value="1.0" selected>1.0×</option>
+          <option value="1.2">1.2×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+        <button id="playBtn">▶︎ Play</button>
+      </div>
+      <h1>Preload · Afterload · TPR — Integrated with Wiggers (Left & Right Heart)</h1>
+      <div class="sub">Scrub the timeline; adjust <strong>TPR</strong> to raise/lower arterial resistance and see effects on afterload and pressure curves. Space = Play/Pause.</div>
+
+      <div class="row2">
+        <!-- Heart panel -->
+        <svg id="heartSvg" viewBox="0 0 560 360" width="100%" height="auto" aria-label="Heart silhouette with preload/afterload">
+          <!-- Vessels that change lumen with TPR -->
+          <g id="vessels">
+            <rect id="aorta" x="380" y="120" width="140" height="28" rx="12" fill="#1a2a55" stroke="#33528f"/>
+            <rect id="pulmArt" x="380" y="220" width="140" height="22" rx="11" fill="#162a47" stroke="#2c5d96"/>
+            <text x="530" y="135" font-size="11" text-anchor="end">Aorta (Systemic)</text>
+            <text x="530" y="235" font-size="11" text-anchor="end">Pulmonary A.</text>
+          </g>
+
+          <!-- Heart silhouette (left = red, right = blue) -->
+          <g id="heart">
+            <path id="LV" d="M210,145 C190,190 210,240 260,270 C300,295 355,285 390,255 C420,228 405,185 370,165 C335,145 250,130 210,145Z"
+                  fill="rgba(255,110,110,0.75)" stroke="#5a2b2b" stroke-width="1.2"/>
+            <path id="LA" d="M180,90 C160,120 190,150 230,158 C265,164 302,140 312,115 C320,95 290,80 248,78 C205,77 190,78 180,90Z"
+                  fill="rgba(255,160,160,0.7)" stroke="#5a2b2b" stroke-width="1"/>
+            <path id="RV" d="M130,170 C115,205 130,235 165,260 C195,283 235,280 265,260 C292,241 282,205 250,190 C215,174 155,160 130,170Z"
+                  fill="rgba(97,168,255,0.75)" stroke="#274a7a" stroke-width="1.2"/>
+            <path id="RA" d="M115,110 C98,136 120,160 150,166 C175,170 205,155 212,138 C218,123 198,112 168,110 C138,109 126,109 115,110Z"
+                  fill="rgba(144,190,247,0.7)" stroke="#274a7a" stroke-width="1"/>
+          </g>
+
+          <!-- Preload/Afterload arrows -->
+          <g id="arrows">
+            <g id="preloadL">
+              <path d="M180,320 l30,-30 l30,30" fill="none" stroke="var(--red)" stroke-width="3"/>
+              <text x="210" y="340" font-size="12" fill="var(--redDim)">Preload (LV EDV)</text>
+            </g>
+            <g id="afterloadL">
+              <path d="M360,125 l20,0 l0,-12 l12,18 l-12,18 l0,-12 l-20,0" fill="var(--red)" />
+              <text x="355" y="110" font-size="12" fill="var(--redDim)">Afterload (Aortic P)</text>
+            </g>
+            <g id="preloadR">
+              <path d="M110,320 l28,-28 l28,28" fill="none" stroke="var(--blue)" stroke-width="3"/>
+              <text x="116" y="340" font-size="12" fill="var(--blueDim)">Preload (RV EDV)</text>
+            </g>
+            <g id="afterloadR">
+              <path d="M360,225 l18,0 l0,-10 l10,15 l-10,15 l0,-10 l-18,0" fill="var(--blue)" />
+              <text x="332" y="212" font-size="12" fill="var(--blueDim)">Afterload (PA P)</text>
+            </g>
+          </g>
+        </svg>
+
+        <!-- Legend + ECG + Metrics -->
+        <div>
+          <div class="legend">
+            <span class="lg"><span class="dot r"></span>LV pressure / volume</span>
+            <span class="lg"><span class="dot b"></span>RV pressure / volume</span>
+            <span class="lg"><span class="dot y"></span>Aortic / Pulmonary artery pressure</span>
+            <span class="lg"><span class="dot g"></span>Atrial pressure (LA/RA)</span>
+          </div>
+          <svg id="ecgSvg" viewBox="0 0 560 60" width="100%" height="auto" aria-label="ECG">
+            <path id="ecgTrace" d="M10,40 L100,40 L110,30 L120,45 L130,10 L140,40 L220,40 L230,35 L240,40 L320,40 L330,30 L340,45 L350,10 L360,40 L550,40"
+                  fill="none" stroke="#e6f0ff" stroke-width="2"/>
+          </svg>
+          <div class="metrics">
+            <div class="box">
+              <h3>Left Heart (Systemic)</h3>
+              <div class="kv">
+                <span>EDV</span><span></span><span id="lv_edv" class="em">—</span>
+                <span>ESV</span><span></span><span id="lv_esv" class="em">—</span>
+                <span>SV</span><span></span><span id="lv_sv" class="em">—</span>
+                <span>EF</span><span></span><span id="lv_ef" class="em">—</span>
+                <span>SBP / DBP</span><span></span><span id="sbp_dbp" class="em">—</span>
+                <span>MAP</span><span></span><span id="map_sys" class="em">—</span>
+              </div>
+            </div>
+            <div class="box">
+              <h3>Right Heart (Pulmonary)</h3>
+              <div class="kv">
+                <span>EDV</span><span></span><span id="rv_edv" class="em">—</span>
+                <span>ESV</span><span></span><span id="rv_esv" class="em">—</span>
+                <span>SV</span><span></span><span id="rv_sv" class="em">—</span>
+                <span>EF</span><span></span><span id="rv_ef" class="em">—</span>
+                <span>sPAP / dPAP</span><span></span><span id="pap" class="em">—</span>
+                <span>Pulmonary MAP</span><span></span><span id="map_pulm" class="em">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="hint">Adjust <strong>TPR</strong> to see arterial pressures rise/fall and afterload arrows thicken/thin. Drag the timeline below to scrub phases.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wiggers panel -->
+    <div class="card">
+      <h1>Wiggers (Left & Right) — Pressures and Volumes</h1>
+      <svg id="wiggers" class="grab" viewBox="0 0 1160 360" width="100%" height="auto" aria-label="Wiggers diagram">
+        <!-- Axes -->
+        <g transform="translate(60,10)">
+          <!-- grids -->
+          <g id="grid">
+            <g stroke="#1e355e" stroke-width="1">
+              <!-- vertical grid every 100ms across 1000ms -->
+              <!-- drawn via JS -->
+            </g>
+          </g>
+          <!-- labels -->
+          <text x="-40" y="20" font-size="12">Pressure</text>
+          <text x="-40" y="210" font-size="12">Volume</text>
+        </g>
+        <!-- Cursor -->
+        <line id="cursor" x1="60" x2="60" y1="10" y2="340" stroke="#eaf2ff" stroke-width="2"/>
+      </svg>
+      <div class="hint">Top: LV/LAo (red) and RV/PA (blue) pressures + LA/RA (green). Bottom: LV and RV volumes.</div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="card">
+      <h1>Timeline (1,000 ms beat @ 60 bpm)</h1>
+      <svg id="timeSvg" class="grab" viewBox="0 0 1160 90" width="100%" height="auto" aria-label="Timeline">
+        <rect x="60" y="30" width="1000" height="20" rx="10" fill="#0f1a34" stroke="#2b3d67"/>
+        <!-- Segments: P, PR, QRS, QT, Diastole -->
+        <rect id="segP" x="60"  y="30" width="80"  height="20" fill="#7bd389" opacity="0.8"/>
+        <rect id="segPR" x="140" y="30" width="80"  height="20" fill="#ffd166" opacity="0.75"/>
+        <rect id="segQRS" x="220" y="30" width="90" height="20" fill="#ff6e6e" opacity="0.9"/>
+        <rect id="segQT" x="310" y="30" width="360" height="20" fill="#e6f0ff" opacity="0.6"/>
+        <rect id="segDia" x="670" y="30" width="390" height="20" fill="#233966" opacity="0.6"/>
+        <line id="tCursor" x1="60" x2="60" y1="25" y2="55" stroke="#eaf2ff" stroke-width="2"/>
+        <text x="60" y="70" font-size="12">Atrial systole</text>
+        <text x="160" y="70" font-size="12">AV delay</text>
+        <text x="240" y="70" font-size="12">Ventricular depol</text>
+        <text x="380" y="70" font-size="12">Repolarization</text>
+        <text x="880" y="70" font-size="12">Diastole</text>
+      </svg>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- Model parameters ----------
+  const BASE_BEAT_MS = 1000;
+  const windows = { P:[0,80], PR:[80,160], QRS:[160,250], QT:[160,520], DIA:[520,1000] };
+
+  // State
+  let tpr = 1.0;        // 1.0 baseline; >1 raises resistance/afterload
+  let rate = 1.0;
+  let playing = false;
+  let baseStart = performance.now();
+  let beatT = 0;
+
+  // DOM
+  const playBtn = document.getElementById('playBtn');
+  const rateSel = document.getElementById('rate');
+  const tprSlider = document.getElementById('tpr');
+  const tprVal = document.getElementById('tprVal');
+  const phaseTag = document.getElementById('phaseTag');
+
+  const aorta = document.getElementById('aorta');
+  const pulmArt = document.getElementById('pulmArt');
+  const LV = document.getElementById('LV'), LA = document.getElementById('LA');
+  const RV = document.getElementById('RV'), RA = document.getElementById('RA');
+  const wiggers = document.getElementById('wiggers');
+  const cursor = document.getElementById('cursor');
+  const timeSvg = document.getElementById('timeSvg');
+  const tCursor = document.getElementById('tCursor');
+
+  // Readout DOM
+  const ro = {
+    lv_edv: document.getElementById('lv_edv'),
+    lv_esv: document.getElementById('lv_esv'),
+    lv_sv: document.getElementById('lv_sv'),
+    lv_ef: document.getElementById('lv_ef'),
+    sbp_dbp: document.getElementById('sbp_dbp'),
+    map_sys: document.getElementById('map_sys'),
+    rv_edv: document.getElementById('rv_edv'),
+    rv_esv: document.getElementById('rv_esv'),
+    rv_sv: document.getElementById('rv_sv'),
+    rv_ef: document.getElementById('rv_ef'),
+    pap: document.getElementById('pap'),
+    map_pulm: document.getElementById('map_pulm'),
+  };
+
+  // ---------- Utility ----------
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp = (a,b,u)=>a+(b-a)*u;
+  const between = (t,a,b)=>t>=a && t<b;
+  const ease = u => 0.5 - 0.5*Math.cos(Math.PI*u);
+
+  function phaseString(t){
+    if (between(t,windows.P[0],windows.P[1])) return 'Atrial systole (Preload rising)';
+    if (between(t,windows.PR[0],windows.PR[1])) return 'AV delay';
+    if (between(t,windows.QRS[0],windows.QRS[1])) return 'Isovolumetric → Ejection (Afterload engaged)';
+    if (between(t,windows.QT[0],windows.QT[1])) return 'Repolarization (late ejection → relaxation)';
+    return 'Diastole (filling / preload)';
+  }
+
+  // ---------- Heart scaling for preload/afterload visuals ----------
+  function envelope(t, t0, t1){
+    if (t<=t0 || t>=t1) return 0;
+    const u = (t-t0)/(t1-t0);
+    return Math.sin(Math.PI*u);
+  }
+  function setTransformScale(el, s){
+    const bb = el.getBBox();
+    const cx = bb.x + bb.width/2, cy = bb.y + bb.height/2;
+    el.setAttribute('transform', `translate(${cx},${cy}) scale(${s}) translate(${-cx},${-cy})`);
+  }
+
+  // ---------- Wiggers plotting ----------
+  const W = 1000, Htop = 180, Hbot = 140, x0 = 60, yTop0 = 20, yBot0 = 210;
+  const gridG = wiggers.querySelector('#grid g') || wiggers.querySelector('#grid');
+  // draw grid
+  (function drawGrid(){
+    for (let ms=0; ms<=1000; ms+=100){
+      const x = x0 + (ms/1000)*W;
+      const ln = document.createElementNS('http://www.w3.org/2000/svg','line');
+      ln.setAttribute('x1', x); ln.setAttribute('x2', x);
+      ln.setAttribute('y1', yTop0); ln.setAttribute('y2', yTop0+Htop+Hbot);
+      ln.setAttribute('stroke', '#1e355e'); ln.setAttribute('stroke-width','1');
+      gridG.appendChild(ln);
+      const tx = document.createElementNS('http://www.w3.org/2000/svg','text');
+      tx.setAttribute('x', x-8); tx.setAttribute('y', yTop0+Htop+Hbot+18);
+      tx.setAttribute('font-size','11'); tx.textContent = ms;
+      wiggers.appendChild(tx);
+    }
+    const gh = document.createElementNS('http://www.w3.org/2000/svg','g');
+    for (let i=0;i<=3;i++){
+      const y = yTop0 + i*(Htop/3);
+      const ln = document.createElementNS('http://www.w3.org/2000/svg','line');
+      ln.setAttribute('x1', x0); ln.setAttribute('x2', x0+W);
+      ln.setAttribute('y1', y); ln.setAttribute('y2', y);
+      ln.setAttribute('stroke', '#1e355e'); ln.setAttribute('stroke-width','1');
+      gh.appendChild(ln);
+    }
+    wiggers.appendChild(gh);
+  })();
+
+  function synthCurves(){
+    // TPR affects afterload and arterial pressures (aortic & PA)
+    const tprF = tpr;              // 1.0 baseline
+    const lvSysMax = 120 * tprF;   // peak LV pressure
+    const rvSysMax = 25  * Math.min(1.2, tprF*0.9 + 0.1); // RV lower sensitivity
+    const aoBase   = 80  * tprF;   // diastolic aortic
+    const paBase   = 10  * Math.min(1.2, tprF*0.9 + 0.1);
+
+    const LVp=[], RVp=[], AOp=[], PAp=[], LAp=[], RAp=[], LVv=[], RVv=[];
+
+    // Allow ESV to creep up with higher TPR (afterload), while EDV stays near baseline
+    const esvLV_base = 50, esvRV_base = 60;
+    const esvLV_mod = clamp(esvLV_base + 12*(tprF-1.0), 40, 70);
+    const esvRV_mod = clamp(esvRV_base + 8*(tprF-1.0), 45, 75);
+    const edvLV = 120, edvRV = 110;
+
+    for (let ms=0; ms<=1000; ms+=10){
+      const pEnv  = envelope(ms, windows.P[0],  windows.P[1]);
+      const qrsE  = envelope(ms, windows.QRS[0],windows.QRS[1]);
+      const ejEnv = envelope(ms, windows.QT[0], windows.QT[1]);
+
+      const lv = (qrsE*0.6 + ejEnv*1.0) * lvSysMax;
+      const ao = Math.max(aoBase, (ejEnv*0.9 + qrsE*0.4) * (lvSysMax*0.9));
+      const la = 8 + 4*pEnv;
+
+      const rv = (qrsE*0.5 + ejEnv*0.9) * rvSysMax;
+      const pa = Math.max(paBase, (ejEnv*0.85 + qrsE*0.35) * (rvSysMax*0.9));
+      const ra = 5 + 3*pEnv;
+
+      // Volumes: fill during diastole, peak EDV near end-diastole then fall with ejection
+      const fill = 1 - (qrsE*0.8 + ejEnv*0.9);
+      const lvVol = esvLV_mod + (edvLV-esvLV_mod) * clamp(fill,0,1);
+      const rvVol = esvRV_mod + (edvRV-esvRV_mod) * clamp(fill,0,1);
+
+      LVp.push([ms, lv]); RVp.push([ms, rv]);
+      AOp.push([ms, ao]); PAp.push([ms, pa]);
+      LAp.push([ms, la]); RAp.push([ms, ra]);
+      LVv.push([ms, lvVol]); RVv.push([ms, rvVol]);
+    }
+    return {LVp,RVp,AOp,PAp,LAp,RAp,LVv,RVv, edvLV, edvRV};
+  }
+
+  function scaleY(val, minV, maxV, y0, H){
+    return y0 + (1 - (val - minV)/(maxV-minV)) * H;
+  }
+
+  // Paths
+  const ns = 'http://www.w3.org/2000/svg';
+  const gTop = document.createElementNS(ns,'g'); gTop.setAttribute('transform',`translate(60,20)`);
+  const gBot = document.createElementNS(ns,'g'); gBot.setAttribute('transform',`translate(60,210)`);
+  wiggers.appendChild(gTop); wiggers.appendChild(gBot);
+
+  const pLV = document.createElementNS(ns,'path'); pLV.setAttribute('stroke','var(--red)'); pLV.setAttribute('fill','none'); pLV.setAttribute('stroke-width','2');
+  const pAO = document.createElementNS(ns,'path'); pAO.setAttribute('stroke','var(--gold)'); pAO.setAttribute('fill','none'); pAO.setAttribute('stroke-width','2');
+  const pRV = document.createElementNS(ns,'path'); pRV.setAttribute('stroke','var(--blue)'); pRV.setAttribute('fill','none'); pRV.setAttribute('stroke-width','2');
+  const pPA = document.createElementNS(ns,'path'); pPA.setAttribute('stroke','#9ad0ff'); pPA.setAttribute('fill','none'); pPA.setAttribute('stroke-width','2');
+  const pLA = document.createElementNS(ns,'path'); pLA.setAttribute('stroke','var(--green)'); pLA.setAttribute('fill','none'); pLA.setAttribute('stroke-width','1.6');
+  const pRA = document.createElementNS(ns,'path'); pRA.setAttribute('stroke','#a3e9b0'); pRA.setAttribute('fill','none'); pRA.setAttribute('stroke-width','1.6');
+
+  const vLV = document.createElementNS(ns,'path'); vLV.setAttribute('stroke','var(--red)'); vLV.setAttribute('fill','none'); vLV.setAttribute('stroke-width','2');
+  const vRV = document.createElementNS(ns,'path'); vRV.setAttribute('stroke','var(--blue)'); vRV.setAttribute('fill','none'); vRV.setAttribute('stroke-width','2');
+
+  gTop.appendChild(pLV); gTop.appendChild(pAO); gTop.appendChild(pRV); gTop.appendChild(pPA); gTop.appendChild(pLA); gTop.appendChild(pRA);
+  gBot.appendChild(vLV); gBot.appendChild(vRV);
+
+  function setPath(pathEl, arr, yMin, yMax, height){
+    let d='';
+    for (let i=0;i<arr.length;i++){
+      const x = (arr[i][0]/1000)*1000;
+      const y = scaleY(arr[i][1], yMin, yMax, 0, height);
+      d += (i===0?`M ${x} ${y}`:` L ${x} ${y}`);
+    }
+    pathEl.setAttribute('d', d);
+  }
+
+  function arrStats(arr){
+    let min=Infinity, max=-Infinity;
+    for (const [,v] of arr){ if (v<min) min=v; if (v>max) max=v; }
+    return {min,max};
+  }
+
+  function renderCurvesAndReadouts(){
+    const curves = synthCurves();
+    // pressure scales
+    const pMax =  Math.max(arrStats(curves.LVp).max, arrStats(curves.AOp).max)*1.05;
+    const pMaxR = Math.max(arrStats(curves.RVp).max, arrStats(curves.PAp).max)*1.2;
+    const pTop = Math.max(pMax, pMaxR, 140);
+    setPath(pLV, curves.LVp, 0, pTop, 180);
+    setPath(pAO, curves.AOp, 0, pTop, 180);
+    setPath(pRV, curves.RVp, 0, pTop, 180);
+    setPath(pPA, curves.PAp, 0, pTop, 180);
+    setPath(pLA, curves.LAp, 0, 20, 180);
+    setPath(pRA, curves.RAp, 0, 15, 180);
+    // volumes
+    setPath(vLV, curves.LVv, 40, 130, 140);
+    setPath(vRV, curves.RVv, 50, 120, 140);
+
+    // Readouts (per-cycle stats)
+    const LVvStats = arrStats(curves.LVv), RVvStats = arrStats(curves.RVv);
+    const lvEDV = Math.round(LVvStats.max), lvESV = Math.round(LVvStats.min);
+    const rvEDV = Math.round(RVvStats.max), rvESV = Math.round(RVvStats.min);
+    const lvSV = lvEDV - lvESV, rvSV = rvEDV - rvESV;
+    const lvEF = lvEDV>0 ? (lvSV/lvEDV*100) : 0;
+    const rvEF = rvEDV>0 ? (rvSV/rvEDV*100) : 0;
+
+    const AOpStats = arrStats(curves.AOp), PApStats = arrStats(curves.PAp);
+    const sbp = Math.round(AOpStats.max), dbp = Math.round(AOpStats.min);
+    const spap = Math.round(PApStats.max), dpap = Math.round(PApStats.min);
+    const map_sys = Math.round(dbp + (sbp-dbp)/3);
+    const map_pulm = Math.round(dpap + (spap-dpap)/3);
+
+    ro.lv_edv.textContent = lvEDV + " mL";
+    ro.lv_esv.textContent = lvESV + " mL";
+    ro.lv_sv.textContent  = lvSV  + " mL";
+    ro.lv_ef.textContent  = lvEF.toFixed(0) + " %";
+    ro.rv_edv.textContent = rvEDV + " mL";
+    ro.rv_esv.textContent = rvESV + " mL";
+    ro.rv_sv.textContent  = rvSV  + " mL";
+    ro.rv_ef.textContent  = rvEF.toFixed(0) + " %";
+    ro.sbp_dbp.textContent = sbp + " / " + dbp + " mmHg";
+    ro.map_sys.textContent = map_sys + " mmHg";
+    ro.pap.textContent     = spap + " / " + dpap + " mmHg";
+    ro.map_pulm.textContent= map_pulm + " mmHg";
+  }
+
+  // initial render
+  renderCurvesAndReadouts();
+
+  // ---------- Timeline and scrubbing ----------
+  function setBeatT(ms){
+    beatT = clamp(ms, 0, BASE_BEAT_MS);
+    phaseTag.textContent = (playing?'Playing · ':'Paused · ') + phaseString(beatT);
+    const x = 60 + (beatT/1000) * 1000;
+    tCursor.setAttribute('x1', x); tCursor.setAttribute('x2', x);
+    cursor.setAttribute('x1', x); cursor.setAttribute('x2', x);
+
+    // heart visuals: preload swelling; vessel width reflects TPR; afterload arrow intensity
+    const pEnv = envelope(beatT, windows.P[0], windows.P[1]);
+    const qrsE = envelope(beatT, windows.QRS[0], windows.QRS[1]);
+    const ejEnv = envelope(beatT, windows.QT[0], windows.QT[1]);
+
+    const fill = 1 - (qrsE*0.8 + ejEnv*0.9);
+    const LVscale = 1 + 0.06*fill - 0.10*ejEnv;
+    const LAscale = 1 + 0.04*pEnv;
+    const RVscale = 1 + 0.05*fill - 0.08*ejEnv*0.8;
+    const RAscale = 1 + 0.035*pEnv;
+
+    setTransformScale(LV, LVscale);
+    setTransformScale(LA, LAscale);
+    setTransformScale(RV, RVscale);
+    setTransformScale(RA, RAscale);
+
+    const aW = 140 * clamp(1.1 - 0.35*(tpr-1.0), 0.55, 1.3);
+    const pW = 140 * clamp(1.05 - 0.25*(tpr*0.7-1.0), 0.6, 1.2);
+    aorta.setAttribute('width', aW.toFixed(1));
+    pulmArt.setAttribute('width', pW.toFixed(1));
+
+    const afterloadIntensity = clamp((qrsE*0.6 + ejEnv)* (0.7 + 0.6*(tpr-1.0+1)), 0, 1.6);
+    document.getElementById('afterloadL').setAttribute('opacity', afterloadIntensity);
+    document.getElementById('afterloadR').setAttribute('opacity', afterloadIntensity*0.6);
+  }
+
+  // Scrubbing
+  let dragging=false;
+  function xToMs(clientX){
+    const rect = timeSvg.getBoundingClientRect();
+    const left = rect.left + (60/1160)*rect.width;
+    const right= rect.left + (1060/1160)*rect.width;
+    const u = clamp((clientX-left)/(right-left), 0, 1);
+    return u*1000;
+  }
+  function onDown(e){
+    dragging=true; timeSvg.classList.add('grabbing'); setPlaying(false);
+    const x = e.touches ? e.touches[0].clientX : e.clientX; setBeatT(xToMs(x));
+  }
+  function onMove(e){ if(!dragging) return; const x = e.touches ? e.touches[0].clientX : e.clientX; setBeatT(xToMs(x)); }
+  function onUp(){ dragging=false; timeSvg.classList.remove('grabbing'); }
+  timeSvg.addEventListener('mousedown', onDown); document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+  timeSvg.addEventListener('touchstart', onDown,{passive:true}); timeSvg.addEventListener('touchmove', onMove,{passive:true}); document.addEventListener('touchend', onUp);
+
+  // ---------- Animation loop ----------
+  function tick(now){
+    const elapsed = (now - baseStart) * rate;
+    setBeatT(elapsed % BASE_BEAT_MS);
+    if (playing) requestAnimationFrame(tick);
+  }
+
+  function setPlaying(p){
+    playing = p;
+    playBtn.textContent = p ? '❚❚ Pause' : '▶︎ Play';
+    phaseTag.textContent = (p?'Playing · ':'Paused · ') + phaseString(beatT);
+    if (p){ baseStart = performance.now() - beatT/rate; requestAnimationFrame(tick); }
+  }
+  playBtn.addEventListener('click', ()=> setPlaying(!playing));
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); setPlaying(!playing);} });
+
+  rateSel.addEventListener('change', ()=>{
+    const newR = parseFloat(rateSel.value);
+    baseStart = performance.now() - beatT/newR;
+    rate = newR;
+  });
+
+  tprSlider.addEventListener('input', ()=>{
+    tpr = parseFloat(tprSlider.value);
+    tprVal.textContent = tpr.toFixed(2) + '×';
+    renderCurvesAndReadouts(); // recompute curves and refresh readouts
+    setBeatT(beatT); // refresh visuals
+  });
+
+  // initial state
+  renderCurvesAndReadouts();
+  setBeatT(0);
+})();
+</script>
+</body>
+</html>
